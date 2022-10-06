@@ -5,14 +5,14 @@ const languages = [
 		name: "English",
 		key: "en",
 	},
-	// {
-	// 	name: "French",
-	// 	key: "fr",
-	// },
-	// {
-	// 	name: "Italian",
-	// 	key: "it",
-	// },
+	{
+		name: "French",
+		key: "fr",
+	},
+	{
+		name: "Italian",
+		key: "it",
+	},
 ];
 
 function App() {

@@ -4,9 +4,82 @@
 	box-sizing: border-box;
 }
 
+/* scrollbar */
+/* width */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+	border-radius: 200px;
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb {
+	background-color: rgb(218, 218, 218);
+	border-radius: 500px;
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+	background: rgb(182, 182, 182);
+}
+
 .spell-check-error {
 	border-bottom: 0.1px dashed red;
 	display: inline-block;
 	cursor: pointer;
 	color: red;
+}
+
+.context-menu {
+	font-size: 14px;
+	background-color: #fff;
+	border-radius: 2px;
+	padding: 10px;
+	min-width: 150px;
+	height: auto;
+	margin: 0;
+	position: absolute;
+	box-shadow: 0 0 10px 0 #ccc;
+	border-radius: 10px;
+	opacity: 1;
+	transition: opacity 0.5s linear;
+	color: #868e95;
+	z-index: 2;
+
+	.menu {
+		&-list {
+			list-style: none;
+			padding: 0;
+			max-height: 150px;
+			overflow: auto;
+			margin-bottom: 10px;
+			li {
+				color: #489b71;
+				padding: 5px 10px;
+				font-size: 16px;
+				&:not(:last-child) {
+					margin-bottom: 3px;
+				}
+				&:hover {
+					background-color: #d7e8de;
+					border-radius: 5px;
+					color: black;
+					cursor: pointer;
+				}
+			}
+		}
+
+		&-actions {
+			padding-top: 10px;
+			border-top: 1px solid rgb(234, 234, 234);
+
+			button {
+				color: #868e95;
+			}
+		}
+	}
 }

@@ -1,23 +1,35 @@
 import axios from "axios";
-import { uniqueId } from "lodash";
 import PropTypes from "prop-types";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import ReactQuill, { Quill } from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { fetchSuggestions } from "../actions/FetchSuggestions";
 import SpellCheckBlot from "./blots/SpellCheckBlot";
+import SpellSuggestions from "./SpellSuggesstions";
+import { generateRandomCharacters } from "../helpers";
+import $ from "jquery";
+
+const errorClassName = "spell-check-error";
 
 export default function SpellChecker({ language }) {
 	const quillRef = React.createRef();
+	const componentRef = React.createRef();
 
 	const [state, setState] = useState({
 		spellcheckDisabled: false,
-		text: "don't you worry don't you worry now heavn got a plna for you ",
+		text: "",
 		errors: [],
 		highlightedErrors: [],
 		ignored: [],
 		dictionary: [],
+		showContextMenu: false,
+		contextAnchorPoint: {},
+		selectedError: null,
 	});
+
+	const handleStateUpdate = (payload) => {
+		setState((old) => ({ ...old, ...payload }));
+	};
 
 	//endpoint to get data from server
 	useEffect(() => {
@@ -25,13 +37,15 @@ export default function SpellChecker({ language }) {
 
 		let timeout = setTimeout(() => {
 			const fetchSuggestionsData = async () => {
-				const result = await fetchSuggestions(
+				const errors = await fetchSuggestions(
 					state.text,
 					language.key,
 					cancelToken.token
 				);
 
-				handleStateUpdate({ errors: result });
+				if (errors) {
+					handleStateUpdate({ errors });
+				}
 			};
 
 			if (state.text?.length > 1) {
@@ -43,7 +57,14 @@ export default function SpellChecker({ language }) {
 			clearTimeout(timeout);
 			cancelToken.cancel();
 		};
+		// eslint-disable-next-line
 	}, [state.text, language]);
+
+	const handleHideContextMenu = useCallback((e) => {
+		if (e?.target?.className !== errorClassName) {
+			handleStateUpdate({ showContextMenu: false });
+		}
+	}, []);
 
 	//setup quill and register blots
 	useEffect(() => {
@@ -58,33 +79,171 @@ export default function SpellChecker({ language }) {
 		}
 	}, [quillRef, state]);
 
-	const handleStateUpdate = (payload) => {
-		setState((old) => ({ ...old, ...payload }));
-	};
-
 	const handleChange = (text) => {
 		handleStateUpdate({ text });
 	};
 
-	const handlePortalClick = (text) => {
-		console.log("portal click");
-		console.log(text);
+	const handlePortalClick = useCallback(
+		(node) => {
+			if (!state.showContextMenu) {
+				handleStateUpdate({
+					showContextMenu: true,
+					contextAnchorPoint: {
+						x: node.pageX,
+						y: node.pageY,
+					},
+					selectedError: state.highlightedErrors.find(
+						(i) =>
+							i.text.toLowerCase() ===
+							node.target.innerText.toLowerCase()
+					),
+				});
+			}
+		},
+		[state.highlightedErrors, state.showContextMenu]
+	);
+
+	useEffect(() => {
+		if (state.showContextMenu) {
+			document.addEventListener("click", handleHideContextMenu);
+			document.addEventListener("contextmenu", handleHideContextMenu);
+			return () => {
+				document.removeEventListener("click", handleHideContextMenu);
+				document.removeEventListener(
+					"contextmenu",
+					handleHideContextMenu
+				);
+			};
+		}
+	}, [state.showContextMenu, handleHideContextMenu, handlePortalClick]);
+
+	const handleHighlightErrors = (errors) => {
+		let contents = state.text;
+
+		let highlightedErrors = state.highlightedErrors;
+
+		errors.forEach((text) => {
+			let id = `${text.original}_${generateRandomCharacters(30)}`;
+
+			contents = contents.replace(
+				new RegExp(text.original, "g"),
+				`<span class="${errorClassName}" id="${id}">${text.original}</span>`
+			);
+
+			highlightedErrors.push({
+				id,
+				text: text.original,
+				suggestions: text.suggestions,
+			});
+		});
+
+		//fix to quill updating state before new content gets updated
+		setTimeout(() => {
+			handleStateUpdate({
+				text: contents,
+				highlightedErrors,
+			});
+		}, 500);
+	};
+
+	const handleRemoveHighlightedErrors = (noErrors) => {
+		let contents = state.text;
+
+		let highlightedErrors = state.highlightedErrors.filter(
+			(item) => !noErrors.map((i) => i.id).includes(item.id)
+		);
+
+		noErrors.forEach((item) => {
+			let regex = new RegExp(
+				`<span class="${errorClassName}" id="${item.text}_.*?">(.*?)</span>`
+			);
+
+			let match = contents.match(regex, "gm")?.[1];
+
+			if (match) {
+				contents = contents.replace(regex, match);
+			}
+		});
+
+		handleStateUpdate({ text: contents, highlightedErrors });
+	};
+
+	const handleSuggestionClick = (text) => {
+		let { selectedError, text: contents, errors } = state;
+
+		let regex = new RegExp(
+			`<span class="${errorClassName}" id="${selectedError.text}_.*?">(.*?)</span>`
+		);
+
+		contents = contents.replace(regex, text);
+
+		contents = contents.replace(new RegExp(selectedError.text), text);
+
+		errors = errors.filter((i) => i.original !== selectedError.text);
+
+		handleStateUpdate({
+			text: contents,
+			errors,
+			selectedError: null,
+		});
+	};
+
+	const handleAddToDictionary = () => {
+		let dictionary = state.dictionary;
+
+		dictionary.push(state.selectedError);
+
+		handleStateUpdate({ dictionary });
+	};
+
+	const handleIgnore = () => {
+		let ignored = state.ignored;
+
+		ignored.push(state.selectedError);
+
+		handleStateUpdate({ ignored });
+	};
+
+	const handleDisableDefaultContext = (e) => {
+		e.preventDefault();
 	};
 
 	useEffect(() => {
-		if (state.highlightedErrors.length > 0) {
-			state.highlightedErrors.forEach((item) => {
-				let element = document.getElementById(item.id);
-				if (element && !element.hasAttribute("eventListenerAdded")) {
-					element.setAttribute("eventListenerAdded", "true");
-					element.addEventListener("click", (e) =>
-						handlePortalClick(e)
+		let node = $(componentRef?.current);
+
+		if (!node.attr("registeredEvents")) {
+			node.attr("registeredEvents", "true");
+
+			["click", "contextmenu"].forEach((ev) => {
+				$(componentRef.current).on(ev, `.${errorClassName}`, (e) =>
+					handlePortalClick(e)
+				);
+			});
+
+			$(componentRef.current).on(
+				"mouseenter",
+				`.${errorClassName}`,
+				() => {
+					document.addEventListener(
+						"contextmenu",
+						handleDisableDefaultContext
 					);
 				}
-			});
+			);
+
+			$(componentRef.current).on(
+				"mouseleave",
+				`.${errorClassName}`,
+				() => {
+					document.removeEventListener(
+						"contextmenu",
+						handleDisableDefaultContext
+					);
+				}
+			);
 		}
 		// eslint-disable-next-line
-	}, [state.highlightedErrors.length]);
+	}, []);
 
 	//handles text highlighting
 	useEffect(() => {
@@ -96,59 +255,29 @@ export default function SpellChecker({ language }) {
 			(text) =>
 				!state.highlightedErrors
 					.map((i) => i.text)
-					.includes(text.original)
+					.includes(text.original) &&
+				!state.dictionary.map((i) => i.text).includes(text.original) &&
+				!state.ignored.map((i) => i.text).includes(text.original)
 		);
 
 		if (errors.length > 0) {
-			let highlightedErrors = state.highlightedErrors;
-
-			errors.forEach((text) => {
-				let id = uniqueId(`${text.original}_`);
-
-				contents = contents.replace(
-					new RegExp(text.original, "g"),
-					`<span class="spell-check-error" id="${id}">${text.original}</span>`
-				);
-
-				highlightedErrors.push({
-					id,
-					text: text.original,
-				});
-			});
-
-			handleStateUpdate({
-				text: contents,
-				highlightedErrors,
-			});
+			handleHighlightErrors(errors);
 		}
 
-		state.highlightedErrors
-			.filter(
-				(item) =>
-					!state.errors.map((i) => i.original).includes(item.text)
-			)
-			.forEach((item) => {
-				let regex = new RegExp(
-					`<span class="spell-check-error" id="${item.text}_.*?">(.*?)</span>`
-				);
+		let noErrors = state.highlightedErrors.filter(
+			(item) => !state.errors.map((i) => i.original).includes(item.text)
+		);
 
-				let match = contents.match(regex, "gm")?.[1];
+		noErrors = [...noErrors, ...state.dictionary, ...state.ignored];
 
-				contents = contents.replace(regex, match);
-
-				let highlightedErrors = state.highlightedErrors.filter(
-					(i) => i.id !== item.id
-				);
-
-				handleStateUpdate({ text: contents, highlightedErrors });
-			});
+		if (noErrors.length > 0) {
+			handleRemoveHighlightedErrors(noErrors);
+		}
 		// eslint-disable-next-line
-	}, [state.errors]);
-
-	console.log(state);
+	}, [state.errors.length, state.dictionary.length, state.ignored.length]);
 
 	return (
-		<div className="my-3">
+		<div ref={componentRef} className="list-elements my-3">
 			<h5>{`${language?.name} Editor`}</h5>
 			<ReactQuill
 				ref={quillRef}
@@ -157,6 +286,14 @@ export default function SpellChecker({ language }) {
 				value={state.text}
 				onChange={handleChange}
 			></ReactQuill>
+			<SpellSuggestions
+				show={state.showContextMenu}
+				anchorPoint={state.contextAnchorPoint}
+				selectedError={state.selectedError}
+				handleSuggestionClick={handleSuggestionClick}
+				handleAddToDictionary={handleAddToDictionary}
+				handleIgnore={handleIgnore}
+			/>
 		</div>
 	);
 }

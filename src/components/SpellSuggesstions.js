@@ -13,16 +13,22 @@ const SpellSuggestions = ({
 			className="context-menu"
 			style={{ top: anchorPoint?.y, left: anchorPoint?.x }}
 		>
-			<ul className="menu-list">
-				{selectedError?.suggestions?.map((suggestion, index) => (
-					<li
-						key={index}
-						onClick={() => handleSuggestionClick(suggestion)}
-					>
-						{suggestion}
-					</li>
-				))}
-			</ul>
+			{selectedError?.suggestions?.length > 0 ? (
+				<ul className="menu-list">
+					{selectedError?.suggestions?.map((suggestion, index) => (
+						<li
+							key={index}
+							onClick={() => handleSuggestionClick(suggestion)}
+						>
+							{suggestion}
+						</li>
+					))}
+				</ul>
+			) : (
+				<div className="text-center pt-2">
+					<p>No suggestions</p>
+				</div>
+			)}
 
 			<div className="menu-actions">
 				<div className="d-grid gap-1">

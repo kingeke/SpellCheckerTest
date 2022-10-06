@@ -20,8 +20,10 @@ export const fetchSuggestions = async (text, language, cancelToken) => {
 
 		return data;
 	} catch (error) {
-		if (!axios.isCancel(error)) console.error(error);
+		if (!axios.isCancel(error)) {
+			console.error(error);
+		}
 
-		return [];
+		return false;
 	}
 };

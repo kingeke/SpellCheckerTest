@@ -1,13 +1,13 @@
 import axios from "axios";
+import $ from "jquery";
 import PropTypes from "prop-types";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import ReactQuill, { Quill } from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { fetchSuggestions } from "../actions/FetchSuggestions";
+import { generateRandomCharacters } from "../helpers";
 import SpellCheckBlot from "./blots/SpellCheckBlot";
 import SpellSuggestions from "./SpellSuggesstions";
-import { generateRandomCharacters } from "../helpers";
-import $ from "jquery";
 
 const errorClassName = "spell-check-error";
 
@@ -17,7 +17,7 @@ export default function SpellChecker({ language }) {
 
 	const [state, setState] = useState({
 		spellcheckDisabled: false,
-		text: "",
+		contents: "",
 		errors: [],
 		highlightedErrors: [],
 		ignored: [],
@@ -26,6 +26,8 @@ export default function SpellChecker({ language }) {
 		contextAnchorPoint: {},
 		selectedError: null,
 	});
+
+	const [quillEditor, setQuillEditor] = useState(null);
 
 	const handleStateUpdate = (payload) => {
 		setState((old) => ({ ...old, ...payload }));
@@ -37,8 +39,10 @@ export default function SpellChecker({ language }) {
 
 		let timeout = setTimeout(() => {
 			const fetchSuggestionsData = async () => {
+				if (!quillEditor) return;
+
 				const errors = await fetchSuggestions(
-					state.text,
+					quillEditor.getText(),
 					language.key,
 					cancelToken.token
 				);
@@ -48,7 +52,7 @@ export default function SpellChecker({ language }) {
 				}
 			};
 
-			if (state.text?.length > 1) {
+			if (state.contents?.length > 1) {
 				fetchSuggestionsData();
 			}
 		}, 2000);
@@ -58,13 +62,13 @@ export default function SpellChecker({ language }) {
 			cancelToken.cancel();
 		};
 		// eslint-disable-next-line
-	}, [state.text, language]);
+	}, [state.contents, language, quillEditor]);
 
-	const handleHideContextMenu = useCallback((e) => {
+	const handleHideContextMenu = (e) => {
 		if (e?.target?.className !== errorClassName) {
 			handleStateUpdate({ showContextMenu: false });
 		}
-	}, []);
+	};
 
 	//setup quill and register blots
 	useEffect(() => {
@@ -76,32 +80,29 @@ export default function SpellChecker({ language }) {
 			handleStateUpdate({ spellcheckDisabled: true });
 
 			Quill.register(SpellCheckBlot);
+
+			setQuillEditor(editor);
 		}
 	}, [quillRef, state]);
 
-	const handleChange = (text) => {
-		handleStateUpdate({ text });
+	const handleChange = (contents) => {
+		handleStateUpdate({ contents });
 	};
 
-	const handlePortalClick = useCallback(
-		(node) => {
-			if (!state.showContextMenu) {
-				handleStateUpdate({
-					showContextMenu: true,
-					contextAnchorPoint: {
-						x: node.pageX,
-						y: node.pageY,
-					},
-					selectedError: state.highlightedErrors.find(
-						(i) =>
-							i.text.toLowerCase() ===
-							node.target.innerText.toLowerCase()
-					),
-				});
-			}
-		},
-		[state.highlightedErrors, state.showContextMenu]
-	);
+	const handlePortalClick = (node) => {
+		if (!state.showContextMenu) {
+			handleStateUpdate({
+				showContextMenu: true,
+				contextAnchorPoint: {
+					x: node.pageX,
+					y: node.pageY,
+				},
+				selectedError: state.highlightedErrors.find(
+					(i) => i.id === node.target.id
+				),
+			});
+		}
+	};
 
 	useEffect(() => {
 		if (state.showContextMenu) {
@@ -115,10 +116,11 @@ export default function SpellChecker({ language }) {
 				);
 			};
 		}
-	}, [state.showContextMenu, handleHideContextMenu, handlePortalClick]);
+		// eslint-disable-next-line
+	}, [state.showContextMenu]);
 
 	const handleHighlightErrors = (errors) => {
-		let contents = state.text;
+		let { contents } = state;
 
 		let highlightedErrors = state.highlightedErrors;
 
@@ -140,14 +142,14 @@ export default function SpellChecker({ language }) {
 		//fix to quill updating state before new content gets updated
 		setTimeout(() => {
 			handleStateUpdate({
-				text: contents,
+				contents,
 				highlightedErrors,
 			});
 		}, 500);
 	};
 
 	const handleRemoveHighlightedErrors = (noErrors) => {
-		let contents = state.text;
+		let { contents } = state;
 
 		let highlightedErrors = state.highlightedErrors.filter(
 			(item) => !noErrors.map((i) => i.id).includes(item.id)
@@ -165,11 +167,11 @@ export default function SpellChecker({ language }) {
 			}
 		});
 
-		handleStateUpdate({ text: contents, highlightedErrors });
+		handleStateUpdate({ contents, highlightedErrors });
 	};
 
 	const handleSuggestionClick = (text) => {
-		let { selectedError, text: contents, errors } = state;
+		let { selectedError, contents, errors } = state;
 
 		let regex = new RegExp(
 			`<span class="${errorClassName}" id="${selectedError.text}_.*?">(.*?)</span>`
@@ -182,7 +184,7 @@ export default function SpellChecker({ language }) {
 		errors = errors.filter((i) => i.original !== selectedError.text);
 
 		handleStateUpdate({
-			text: contents,
+			contents,
 			errors,
 			selectedError: null,
 		});
@@ -209,48 +211,38 @@ export default function SpellChecker({ language }) {
 	};
 
 	useEffect(() => {
-		let node = $(componentRef?.current);
+		let ref = componentRef.current;
 
-		if (!node.attr("registeredEvents")) {
-			node.attr("registeredEvents", "true");
+		["click", "contextmenu"].forEach((ev) => {
+			$(ref).on(ev, `.${errorClassName}`, (e) => handlePortalClick(e));
+		});
 
+		$(ref).on("mouseenter", `.${errorClassName}`, () => {
+			document.addEventListener(
+				"contextmenu",
+				handleDisableDefaultContext
+			);
+		});
+
+		$(ref).on("mouseleave", `.${errorClassName}`, () => {
+			document.removeEventListener(
+				"contextmenu",
+				handleDisableDefaultContext
+			);
+		});
+
+		return () => {
 			["click", "contextmenu"].forEach((ev) => {
-				$(componentRef.current).on(ev, `.${errorClassName}`, (e) =>
+				$(ref).remove(ev, `.${errorClassName}`, (e) =>
 					handlePortalClick(e)
 				);
 			});
-
-			$(componentRef.current).on(
-				"mouseenter",
-				`.${errorClassName}`,
-				() => {
-					document.addEventListener(
-						"contextmenu",
-						handleDisableDefaultContext
-					);
-				}
-			);
-
-			$(componentRef.current).on(
-				"mouseleave",
-				`.${errorClassName}`,
-				() => {
-					document.removeEventListener(
-						"contextmenu",
-						handleDisableDefaultContext
-					);
-				}
-			);
-		}
+		};
 		// eslint-disable-next-line
-	}, []);
+	}, [state]);
 
 	//handles text highlighting
 	useEffect(() => {
-		let contents = state.text;
-
-		if (!contents) return;
-
 		let errors = state.errors.filter(
 			(text) =>
 				!state.highlightedErrors
@@ -283,7 +275,7 @@ export default function SpellChecker({ language }) {
 				ref={quillRef}
 				name="text"
 				theme="snow"
-				value={state.text}
+				value={state.contents}
 				onChange={handleChange}
 			></ReactQuill>
 			<SpellSuggestions

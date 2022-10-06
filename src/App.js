@@ -1,25 +1,30 @@
-import logo from './logo.svg';
-import './App.css';
+import SpellChecker from "./components/SpellChecker";
+
+const languages = [
+	{
+		name: "English",
+		key: "en",
+	},
+	// {
+	// 	name: "French",
+	// 	key: "fr",
+	// },
+	// {
+	// 	name: "Italian",
+	// 	key: "it",
+	// },
+];
 
 function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+	return (
+		<div className="container">
+			{languages?.map((language, index) => (
+				<div key={index} className="my-5">
+					<SpellChecker language={language} />
+				</div>
+			))}
+		</div>
+	);
 }
 
 export default App;

@@ -1,0 +1,12 @@
+* {
+	padding: 0;
+	margin: 0;
+	box-sizing: border-box;
+}
+
+.spell-check-error {
+	border-bottom: 0.1px dashed red;
+	display: inline-block;
+	cursor: pointer;
+	color: red;
+}

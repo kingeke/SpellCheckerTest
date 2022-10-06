@@ -5,7 +5,6 @@ import React, { useEffect, useState } from "react";
 import ReactQuill, { Quill } from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { fetchSuggestions } from "../actions/FetchSuggestions";
-import { generateRandomCharacters } from "../helpers";
 import SpellCheckBlot from "./blots/SpellCheckBlot";
 
 export default function SpellChecker({ language }) {
@@ -19,8 +18,6 @@ export default function SpellChecker({ language }) {
 		ignored: [],
 		dictionary: [],
 	});
-
-	const [quillEditor, setQuillEditor] = useState(null);
 
 	//endpoint to get data from server
 	useEffect(() => {
@@ -53,8 +50,6 @@ export default function SpellChecker({ language }) {
 		if (quillRef.current && !state.spellcheckDisabled) {
 			const editor = quillRef.current.getEditor();
 
-			setQuillEditor(editor);
-
 			editor?.root?.setAttribute("spellcheck", false);
 
 			handleStateUpdate({ spellcheckDisabled: true });
@@ -76,66 +71,56 @@ export default function SpellChecker({ language }) {
 		console.log(text);
 	};
 
+	useEffect(() => {
+		if (state.highlightedErrors.length > 0) {
+			state.highlightedErrors.forEach((item) => {
+				let element = document.getElementById(item.id);
+				if (element && !element.hasAttribute("eventListenerAdded")) {
+					element.setAttribute("eventListenerAdded", "true");
+					element.addEventListener("click", (e) =>
+						handlePortalClick(e)
+					);
+				}
+			});
+		}
+		// eslint-disable-next-line
+	}, [state.highlightedErrors.length]);
+
 	//handles text highlighting
 	useEffect(() => {
-		if (!quillEditor) return;
-
 		let contents = state.text;
 
 		if (!contents) return;
 
-		let highlightedErrors = state.highlightedErrors;
+		let errors = state.errors.filter(
+			(text) =>
+				!state.highlightedErrors
+					.map((i) => i.text)
+					.includes(text.original)
+		);
 
-		state.errors
-			.filter(
-				(text) =>
-					!state.highlightedErrors
-						.map((i) => i.text)
-						.includes(text.original)
-			)
-			.forEach((text) => {
-				let id;
+		if (errors.length > 0) {
+			let highlightedErrors = state.highlightedErrors;
+
+			errors.forEach((text) => {
+				let id = uniqueId(`${text.original}_`);
 
 				contents = contents.replace(
 					new RegExp(text.original, "g"),
-					`<span class="spell-check-error test-me">${text.original}</span>`
+					`<span class="spell-check-error" id="${id}">${text.original}</span>`
 				);
 
-				let delta = quillEditor.clipboard.convert(contents);
-
-				delta.ops.forEach((item, index) => {
-					if (!item?.attributes?.spellCheckError) return;
-
-					id = uniqueId(
-						`${item.insert}_${generateRandomCharacters(15)}`
-					);
-
-					let attributes = {
-						spellCheckError: {
-							click: () => handlePortalClick(item.insert),
-							id,
-						},
-					};
-
-					if (
-						highlightedErrors.findIndex(
-							(i) => i.text === item.insert
-						) < 0
-					) {
-						highlightedErrors.push({
-							id,
-							text: item.insert,
-							attributes,
-						});
-					}
-
-					delta.ops[index].attributes = attributes;
+				highlightedErrors.push({
+					id,
+					text: text.original,
 				});
-
-				delta.ops.push({ insert: " " });
-
-				quillEditor.setContents(delta, "silent");
 			});
+
+			handleStateUpdate({
+				text: contents,
+				highlightedErrors,
+			});
+		}
 
 		state.highlightedErrors
 			.filter(
@@ -147,38 +132,20 @@ export default function SpellChecker({ language }) {
 					`<span class="spell-check-error" id="${item.text}_.*?">(.*?)</span>`
 				);
 
-				let match = contents.match(regex)?.[1];
+				let match = contents.match(regex, "gm")?.[1];
 
 				contents = contents.replace(regex, match);
 
-				let delta = quillEditor.clipboard.convert(contents);
-
-				delta.ops.forEach((item, index) => {
-					if (!item?.attributes?.spellCheckError) return;
-
-					let prevItem = state.highlightedErrors.find(
-						(i) => i.text === item.insert
-					);
-
-					if (prevItem) {
-						delta.ops[index].attributes = prevItem.attributes;
-					}
-				});
-
-				quillEditor.setContents(delta, "silent");
-
-				highlightedErrors = highlightedErrors.filter(
+				let highlightedErrors = state.highlightedErrors.filter(
 					(i) => i.id !== item.id
 				);
-			});
 
-		handleStateUpdate({
-			highlightedErrors,
-		});
+				handleStateUpdate({ text: contents, highlightedErrors });
+			});
 		// eslint-disable-next-line
 	}, [state.errors]);
 
-	// console.log(state);
+	console.log(state);
 
 	return (
 		<div className="my-3">

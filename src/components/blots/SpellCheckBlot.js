@@ -8,7 +8,7 @@ class SpellCheckBlot extends Inline {
 	static className = "spell-check-error";
 
 	static create(initialValue) {
-		const node = super.create();
+		const node = super.create(initialValue);
 		return node;
 	}
 
@@ -23,8 +23,11 @@ class SpellCheckBlot extends Inline {
 		}
 	}
 
-	static formats() {
-		return true;
+	static formats(domNode) {
+		return {
+			id: domNode.getAttribute("id"),
+			domNode,
+		};
 	}
 }
 
